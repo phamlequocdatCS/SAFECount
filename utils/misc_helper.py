@@ -7,7 +7,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
-import torch.distributed as dist
+# import torch.distributed as dist
 
 
 def basicConfig(*args, **kwargs):
@@ -93,7 +93,7 @@ def save_checkpoint(state, is_best, config):
 
 def load_state(path, model, optimizer=None):
 
-    rank = dist.get_rank()
+    # rank = dist.get_rank()
 
     def map_func(storage, location):
         return storage.cuda()
@@ -110,12 +110,12 @@ def load_state(path, model, optimizer=None):
                 v_dst = model.state_dict()[k]
                 if v.shape != v_dst.shape:
                     ignore_keys.append(k)
-                    if rank == 0:
-                        print(
-                            "caution: size-mismatch key: {} size: {} -> {}".format(
-                                k, v.shape, v_dst.shape
-                            )
+                    # if rank == 0:
+                    print(
+                        "caution: size-mismatch key: {} size: {} -> {}".format(
+                            k, v.shape, v_dst.shape
                         )
+                    )
 
         for k in ignore_keys:
             checkpoint["state_dict"].pop(k)
@@ -123,27 +123,27 @@ def load_state(path, model, optimizer=None):
         model.load_state_dict(checkpoint["state_dict"], strict=False)
         print("Load model complete")
 
-        if rank == 0:
-            ckpt_keys = set(checkpoint["state_dict"].keys())
-            own_keys = set(model.state_dict().keys())
-            missing_keys = own_keys - ckpt_keys
-            for k in missing_keys:
-                print("caution: missing keys from checkpoint {}: {}".format(path, k))
+        # if rank == 0:
+        ckpt_keys = set(checkpoint["state_dict"].keys())
+        own_keys = set(model.state_dict().keys())
+        missing_keys = own_keys - ckpt_keys
+        for k in missing_keys:
+            print("caution: missing keys from checkpoint {}: {}".format(path, k))
 
         if optimizer is not None:
             best_metric = checkpoint["best_metric"]
             epoch = checkpoint["epoch"]
             optimizer.load_state_dict(checkpoint["optimizer"])
-            if rank == 0:
-                print(
-                    "=> also loaded optimizer from checkpoint '{}' (Epoch {})".format(
-                        path, epoch
-                    )
+            # if rank == 0:
+            print(
+                "=> also loaded optimizer from checkpoint '{}' (Epoch {})".format(
+                    path, epoch
                 )
+            )
             return best_metric, epoch
     else:
-        if rank == 0:
-            print("=> no checkpoint found at '{}'".format(path))
+        # if rank == 0:
+        print("=> no checkpoint found at '{}'".format(path))
 
 
 def set_random_seed(seed=233, reproduce=False):

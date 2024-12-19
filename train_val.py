@@ -2,19 +2,22 @@ import argparse
 import logging
 import os
 import pprint
-import shutil
 import time
 
+import numpy as np
 import torch
-import torch.distributed as dist
+
+# import torch.distributed as dist
 import yaml
-from datasets.data_builder import build_dataloader
 from easydict import EasyDict
+from torch.nn.parallel import DataParallel as DDP
+
+from datasets.data_builder import build_dataloader
 from models.model_helper import build_network
-from torch.nn.parallel import DistributedDataParallel as DDP
 from utils.criterion_helper import build_criterion
-from utils.dist_helper import setup_distributed
-from utils.eval_helper import dump, merge_together, performances
+
+# from utils.dist_helper import setup_distributed
+from utils.eval_helper import dump
 from utils.lr_helper import get_scheduler
 from utils.misc_helper import (
     create_logger,
@@ -34,11 +37,11 @@ parser.add_argument(
 parser.add_argument("-e", "--evaluate", action="store_true")
 parser.add_argument("-t", "--test", action="store_true")
 # Replace the existing local_rank argument parsing
-parser.add_argument(
-    "--local_rank",
-    default=0,
-    help="local rank for dist",
-)
+# parser.add_argument(
+#     "--local_rank",
+#     default=0,
+#     help="local rank for dist",
+# )
 
 
 def main():
@@ -59,20 +62,20 @@ def main():
         visualizer = build_visualizer(**config.visualizer)
 
     config.port = config.get("port", None)
-    rank, world_size = setup_distributed(port=config.port)
+    # rank, world_size = setup_distributed(port=config.port)
 
-    if rank == 0:
-        os.makedirs(config.save_path, exist_ok=True)
-        os.makedirs(config.log_path, exist_ok=True)
-        if (args.evaluate or args.test) and config.get("visualizer", None):
-            os.makedirs(config.visualizer.vis_dir, exist_ok=True)
+    # if rank == 0:
+    os.makedirs(config.save_path, exist_ok=True)
+    os.makedirs(config.log_path, exist_ok=True)
+    if (args.evaluate or args.test) and config.get("visualizer", None):
+        os.makedirs(config.visualizer.vis_dir, exist_ok=True)
 
-        current_time = get_current_time()
-        logger = create_logger(
-            "global_logger", config.log_path + "/dec_{}.log".format(current_time)
-        )
-        logger.info("\nargs: {}".format(pprint.pformat(args)))
-        logger.info("\nconfig: {}".format(pprint.pformat(config)))
+    current_time = get_current_time()
+    logger = create_logger(
+        "global_logger", config.log_path + "/dec_{}.log".format(current_time)
+    )
+    logger.info("\nargs: {}".format(pprint.pformat(args)))
+    logger.info("\nconfig: {}".format(pprint.pformat(config)))
 
     random_seed = config.get("random_seed", None)
     reproduce = config.get("reproduce", None)
@@ -84,12 +87,12 @@ def main():
     # create model
     model = build_network(config.net)
     model.cuda()
-    local_rank = int(os.environ["LOCAL_RANK"])
+    # local_rank = int(os.environ["LOCAL_RANK"])
     model = DDP(
         model,
-        device_ids=[local_rank],
-        output_device=local_rank,
-        find_unused_parameters=True,
+        device_ids=[0],
+        output_device=0,
+        # find_unused_parameters=True,
     )
 
     # parameters
@@ -167,22 +170,22 @@ def main():
 
         val_mae, val_rmse = eval(val_loader, model, criterion)
 
-        if rank == 0:
-            is_best = False
-            if best_mae >= val_mae:
-                is_best = True
-                best_mae = val_mae
-                best_rmse = val_rmse
-            save_checkpoint(
-                {
-                    "epoch": epoch + 1,
-                    "state_dict": model.state_dict(),
-                    "best_metric": best_mae,
-                    "optimizer": optimizer.state_dict(),
-                },
-                is_best,
-                config,
-            )
+        # if rank == 0:
+        is_best = False
+        if best_mae >= val_mae:
+            is_best = True
+            best_mae = val_mae
+            best_rmse = val_rmse
+        save_checkpoint(
+            {
+                "epoch": epoch + 1,
+                "state_dict": model.state_dict(),
+                "best_metric": best_mae,
+                "optimizer": optimizer.state_dict(),
+            },
+            is_best,
+            config,
+        )
 
 
 def train_one_epoch(train_loader, model, optimizer, criterion, lr_scheduler, epoch):
@@ -193,9 +196,9 @@ def train_one_epoch(train_loader, model, optimizer, criterion, lr_scheduler, epo
             p.requires_grad = False
 
     logger = logging.getLogger("global_logger")
-    rank = dist.get_rank()
-    if rank == 0:
-        logger.info("Training on train set dataset")
+    # rank = dist.get_rank()
+    # if rank == 0:
+    logger.info("Training on train set dataset")
     train_loss = 0
 
     end = time.time()
@@ -225,56 +228,52 @@ def train_one_epoch(train_loader, model, optimizer, criterion, lr_scheduler, epo
         time_epoch = time.time() - end
         end = time.time()
 
-        if rank == 0:
-            logger.info(
-                "Train | Epoch : {} / {} | Iter: {} / {} | lr: {} | Data: {:.2f}, Time: {:.2f} | Loss: {}".format(
-                    epoch + 1,
-                    config.trainer.epochs,
-                    iter,
-                    len(train_loader),
-                    current_lr,
-                    time_data,
-                    time_epoch,
-                    loss,
-                )
-            )
-            logger.info(
-                "Train | GT: {:5.1f}, Pred: {:5.1f} | Best Val MAE: {}, Best Val RMSE: {}".format(
-                    gt_cnt, pred_cnt, best_mae, best_rmse
-                )
-            )
-
-    if rank == 0:
-        logger.info("gather final results")
-    train_loss = torch.Tensor([train_loss]).cuda()
-    iter = torch.Tensor([iter]).cuda()
-    dist.all_reduce(train_loss)
-    dist.all_reduce(iter)
-    train_loss = train_loss.item() / iter.item()
-
-    if rank == 0:
+        # if rank == 0:
         logger.info(
-            "Finish Train Epoch: {} | Average Loss: {} | Best Val MAE: {}, Best Val RMSE: {}".format(
-                epoch + 1, train_loss, best_mae, best_rmse
+            "Train | Epoch : {} / {} | Iter: {} / {} | lr: {} | Data: {:.2f}, Time: {:.2f} | Loss: {}".format(
+                epoch + 1,
+                config.trainer.epochs,
+                iter,
+                len(train_loader),
+                current_lr,
+                time_data,
+                time_epoch,
+                loss,
+            )
+        )
+        logger.info(
+            "Train | GT: {:5.1f}, Pred: {:5.1f} | Best Val MAE: {}, Best Val RMSE: {}".format(
+                gt_cnt, pred_cnt, best_mae, best_rmse
             )
         )
 
+    # if rank == 0:
+    logger.info("gather final results")
+    train_loss = torch.Tensor([train_loss]).cuda()
+    iter = torch.Tensor([iter]).cuda()
+    # dist.all_reduce(train_loss)
+    # dist.all_reduce(iter)
+    train_loss = train_loss.item() / iter.item()
 
-import numpy as np
-import time
+    # if rank == 0:
+    logger.info(
+        "Finish Train Epoch: {} | Average Loss: {} | Best Val MAE: {}, Best Val RMSE: {}".format(
+            epoch + 1, train_loss, best_mae, best_rmse
+        )
+    )
 
 
 def eval(val_loader, model, criterion):
     model.eval()
     logger = logging.getLogger("global_logger")
-    rank = dist.get_rank()
-    if rank == 0:
-        logger.info("Evaluation on val dataset or test dataset")
+    # rank = dist.get_rank()
+    # if rank == 0:
+    logger.info("Evaluation on val dataset or test dataset")
 
-    if rank == 0:
-        os.makedirs(config.evaluator.eval_dir, exist_ok=True)
+    # if rank == 0:
+    os.makedirs(config.evaluator.eval_dir, exist_ok=True)
     # all threads write to config.evaluator.eval_dir, it must be made before every thread begin to write
-    dist.barrier()
+    # dist.barrier()
 
     total_mae = []
     total_rmse = []
@@ -305,17 +304,17 @@ def eval(val_loader, model, criterion):
             # if (args.evaluate or args.test) and config.get("visualizer", None):
             #     visualizer.vis_batch(outputs)
             logger.info(outputs["filename"])
-            if rank == 0:
-                logger.info(
-                    "Val | Iter: {} / {} | GT: {:5.1f}, Pred: {:5.1f} | Val abs_err: {}, Time taken: {} s".format(
-                        iter,
-                        len(val_loader),
-                        gt_cnt,
-                        pred_cnt,
-                        abs_error,
-                        time.time() - st,
-                    )
+            # if rank == 0:
+            logger.info(
+                "Val | Iter: {} / {} | GT: {:5.1f}, Pred: {:5.1f} | Val abs_err: {}, Time taken: {} s".format(
+                    iter,
+                    len(val_loader),
+                    gt_cnt,
+                    pred_cnt,
+                    abs_error,
+                    time.time() - st,
                 )
+            )
 
     val_mae = np.mean(total_mae)
     val_rmse = np.sqrt(np.mean(total_rmse))

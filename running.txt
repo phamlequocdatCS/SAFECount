@@ -1,2 +1,4 @@
 # python -m torch.distributed.launch --nproc_per_node=1 train_val.py -c "l:\1 Things\Code5\SAFECount\experiments\FSC147\config.yaml" -e 
 # torchrun --nproc_per_node=1 train_val.py -c "l:\1 Things\Code5\SAFECount\experiments\FSC147\config.yaml" -e
+
+# python train_val.py -c "l:\1 Things\Code5\SAFECount\experiments\FSC147\config.yaml" -e

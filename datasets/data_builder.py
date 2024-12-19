@@ -1,4 +1,4 @@
-import torch.distributed as dist
+# import torch.distributed as dist
 
 from datasets.custom_dataset import build_custom_dataloader
 from datasets.custom_exemplar_dataset import build_custom_exemplar_dataloader
@@ -29,7 +29,7 @@ def build(cfg, dataset_type, distributed):
 
 
 def build_dataloader(cfg_dataset, distributed=True):
-    rank = dist.get_rank()
+    # rank = dist.get_rank()
 
     train_loader = None
     if cfg_dataset.get("train", None):
@@ -43,7 +43,7 @@ def build_dataloader(cfg_dataset, distributed=True):
     if cfg_dataset.get("test", None):
         test_loader = build(cfg_dataset, dataset_type="test", distributed=distributed)
 
-    if rank == 0:
-        print("build dataset done")
+    # if rank == 0:
+    print("build dataset done")
 
     return train_loader, val_loader, test_loader
