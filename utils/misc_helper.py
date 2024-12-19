@@ -99,8 +99,7 @@ def load_state(path, model, optimizer=None):
         return storage.cuda()
 
     if os.path.isfile(path):
-        if rank == 0:
-            print("=> loading checkpoint '{}'".format(path))
+        print("=> loading checkpoint '{}'".format(path))
 
         checkpoint = torch.load(path, map_location=map_func)
 
@@ -122,6 +121,7 @@ def load_state(path, model, optimizer=None):
             checkpoint["state_dict"].pop(k)
 
         model.load_state_dict(checkpoint["state_dict"], strict=False)
+        print("Load model complete")
 
         if rank == 0:
             ckpt_keys = set(checkpoint["state_dict"].keys())

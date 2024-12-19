@@ -33,7 +33,12 @@ parser.add_argument(
 )
 parser.add_argument("-e", "--evaluate", action="store_true")
 parser.add_argument("-t", "--test", action="store_true")
-parser.add_argument("--local_rank", default=None, help="local rank for dist")
+# Replace the existing local_rank argument parsing
+parser.add_argument(
+    "--local_rank",
+    default=0,
+    help="local rank for dist",
+)
 
 
 def main():
@@ -130,17 +135,17 @@ def main():
     resume_model = config.saver.get("resume_model", None)
     load_path = config.saver.get("load_path", None)
 
-    if resume_model and not resume_model.startswith("/"):
-        resume_model = os.path.join(config.exp_path, resume_model)
-    lastest_model = os.path.join(config.save_path, "ckpt.pth.tar")
-    if auto_resume and os.path.exists(lastest_model):
-        resume_model = lastest_model
-    if resume_model:
-        best_mae, last_epoch = load_state(resume_model, model, optimizer=optimizer)
-    elif load_path:
-        if not load_path.startswith("/"):
-            load_path = os.path.join(config.exp_path, load_path)
-        load_state(load_path, model)
+    # if resume_model and not resume_model.startswith("/"):
+    #     resume_model = os.path.join(config.exp_path, resume_model)
+    # lastest_model = os.path.join("checkpoints/ckpt.pth.tar")
+    # if auto_resume and os.path.exists(lastest_model):
+    #     resume_model = lastest_model
+    # if resume_model:
+    #     best_mae, last_epoch = load_state(resume_model, model, optimizer=optimizer)
+    # elif load_path:
+    #     if not load_path.startswith("/"):
+    #         load_path = os.path.join(config.exp_path, load_path)
+    load_state(load_path, model)
 
     train_loader, val_loader, test_loader = build_dataloader(
         config.dataset, distributed=True
@@ -181,7 +186,6 @@ def main():
 
 
 def train_one_epoch(train_loader, model, optimizer, criterion, lr_scheduler, epoch):
-
     model.train()
     if lr_scale_backbone == 0:
         model.module.backbone.eval()
@@ -256,6 +260,10 @@ def train_one_epoch(train_loader, model, optimizer, criterion, lr_scheduler, epo
         )
 
 
+import numpy as np
+import time
+
+
 def eval(val_loader, model, criterion):
     model.eval()
     logger = logging.getLogger("global_logger")
@@ -268,8 +276,12 @@ def eval(val_loader, model, criterion):
     # all threads write to config.evaluator.eval_dir, it must be made before every thread begin to write
     dist.barrier()
 
+    total_mae = []
+    total_rmse = []
+
     with torch.no_grad():
         for i, sample in enumerate(val_loader):
+            st = time.time()
             iter = i + 1
             sample = to_device(sample, device=torch.device("cuda"))
             outputs = model(sample)
@@ -285,38 +297,54 @@ def eval(val_loader, model, criterion):
             pred_cnt = torch.sum(density_pred).item()
             gt_cnt = torch.sum(density).item()
 
-            if (args.evaluate or args.test) and config.get("visualizer", None):
-                visualizer.vis_batch(outputs)
+            abs_error = np.abs(pred_cnt - gt_cnt)
+
+            total_mae.append(abs_error)
+            total_rmse.append((pred_cnt - gt_cnt) ** 2)
+
+            # if (args.evaluate or args.test) and config.get("visualizer", None):
+            #     visualizer.vis_batch(outputs)
             logger.info(outputs["filename"])
             if rank == 0:
                 logger.info(
-                    "Val | Iter: {} / {} | GT: {:5.1f}, Pred: {:5.1f} | Best Val MAE: {}, Best Val RMSE: {}".format(
-                        iter, len(val_loader), gt_cnt, pred_cnt, best_mae, best_rmse
+                    "Val | Iter: {} / {} | GT: {:5.1f}, Pred: {:5.1f} | Val abs_err: {}, Time taken: {} s".format(
+                        iter,
+                        len(val_loader),
+                        gt_cnt,
+                        pred_cnt,
+                        abs_error,
+                        time.time() - st,
                     )
                 )
 
-    # gather final results
-    dist.barrier()
-    if rank == 0:
-        logger.info("gather final results")
+    val_mae = np.mean(total_mae)
+    val_rmse = np.sqrt(np.mean(total_rmse))
 
-    val_mae = None
-    val_rmse = None
-    if rank == 0:
-        gt_cnts, pred_cnts = merge_together(config.evaluator.eval_dir)
-        val_mae, val_rmse = performances(gt_cnts, pred_cnts)
-        shutil.rmtree(config.evaluator.eval_dir)
-        logger.info(
-            "Finish Val | MAE: {:5.2f}, RMSE: {:5.2f} | Best Val MAE: {}, Best Val RMSE: {}".format(
-                val_mae, val_rmse, best_mae, best_rmse
-            )
-        )
+    print(f"Val MAE: {val_mae}")
+    print(f"Val RMSE: {val_rmse}")
 
-    model.train()
-    if lr_scale_backbone == 0:
-        model.module.backbone.eval()
-        for p in model.module.backbone.parameters():
-            p.requires_grad = False
+    # # gather final results
+    # dist.barrier()
+    # if rank == 0:
+    #     logger.info("gather final results")
+
+    # val_mae = None
+    # val_rmse = None
+    # if rank == 0:
+    #     gt_cnts, pred_cnts = merge_together(config.evaluator.eval_dir)
+    #     val_mae, val_rmse = performances(gt_cnts, pred_cnts)
+    #     shutil.rmtree(config.evaluator.eval_dir)
+    #     logger.info(
+    #         "Finish Val | MAE: {:5.2f}, RMSE: {:5.2f} | Best Val MAE: {}, Best Val RMSE: {}".format(
+    #             val_mae, val_rmse, best_mae, best_rmse
+    #         )
+    #     )
+
+    # model.train()
+    # if lr_scale_backbone == 0:
+    #     model.module.backbone.eval()
+    #     for p in model.module.backbone.parameters():
+    #         p.requires_grad = False
 
     return val_mae, val_rmse
 

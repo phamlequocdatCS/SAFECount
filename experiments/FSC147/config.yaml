@@ -4,8 +4,8 @@ random_seed: 131
 dataset:
   type: custom
   shot: null
-  img_dir: &img_dir ../../data/FSC147_384_V2/images_384_VarV2/
-  density_dir: ../../data/FSC147_384_V2/gt_density_map_adaptive_384_VarV2/
+  img_dir: &img_dir data/FSC147_384_V2/images_384_VarV2/
+  density_dir: data/FSC147_384_V2/gt_density_map_adaptive_384_VarV2/
   input_size: [512, 512] # [h, w]
   pixel_mean: [0.485, 0.456, 0.406]
   pixel_std: [0.229, 0.224, 0.225]
@@ -13,7 +13,7 @@ dataset:
   workers: 4
 
   train:
-    meta_file: ../../data/FSC147_384_V2/train.json
+    meta_file: data/FSC147_384_V2/train.json
     hflip:
       prob: 0.5
     vflip: False
@@ -28,9 +28,9 @@ dataset:
       range: [0.8, 1.25]
       prob: 0.5
   val:
-    meta_file: ../../data/FSC147_384_V2/val.json
+    meta_file: data/FSC147_384_V2/val.json
   test:
-    meta_file: ../../data/FSC147_384_V2/test.json
+    meta_file: data/FSC147_384_V2/test.json
 
 criterion:
   - name: _MSELoss

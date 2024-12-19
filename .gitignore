@@ -13,3 +13,10 @@ experiments/*/*/vis*/*
 experiments/*/checkpoints*/*
 experiments/*/log*/*
 experiments/*/vis*/*
+
+*.npy
+*.tar
+*.jpg
+*.png
+*.npz
+.mypy_cache

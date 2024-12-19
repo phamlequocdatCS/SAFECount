@@ -5,7 +5,7 @@ import torch
 import torch.distributed as dist
 
 
-def setup_distributed(backend="nccl", port=None):
+def setup_distributed(backend="gloo", port=None):
     """Initialize distributed training environment.
     support both slurm and torch.distributed.launch
     see torch.distributed.init_process_group() for more details
